@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.markosamo.keyboard-color",
+  "name": "Keyboard Color",
+  "version": "0.1.0",
+  "author": "markosAMO",
+  "license": "MIT",
+  "description": "Sets the backlight of Akko / RongYuan keyboards from the bar and keeps it in sync with the active Omarchy theme.",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Keyboard Color",
+    "description": "Keyboard backlight colour, synced with the Omarchy theme.",
+    "category": "Hardware",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "hideWhenUnavailable": true
+    },
+    "schema": [
+      {
+        "key": "hideWhenUnavailable",
+        "type": "boolean",
+        "label": "Hide when no keyboard is found",
+        "description": "Remove the widget from the bar while no supported keyboard is connected.",
+        "defaultValue": true
+      }
+    ]
+  }
+}

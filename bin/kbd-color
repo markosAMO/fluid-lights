@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+"""Set the backlight of an Akko / RongYuan (VID 3151) keyboard over hidraw.
+
+The board takes 64-byte HID feature reports (report ID 0) on its vendor
+collection (usage page 0xFFFF), even though that collection's descriptor only
+declares an input report. Lighting is one frame:
+
+    [0x07, mode, 5 - speed, brightness, flags, R, G, B, checksum]
+
+with checksum = 0xFF - (sum(bytes 0..7) & 0xFF). Protocol and pacing follow
+sharkfin (yc500 family): https://github.com/dniminenn/sharkfin
+
+Do not send these frames to the keyboard collection: the board stalls its
+control endpoint and ignores every report until it is unplugged.
+
+Usage:
+  kbd-color set <#rrggbb|theme-role> [-b 0-4]   fixed colour (stops following the theme)
+  kbd-color theme [role] [-b 0-4]               follow the Omarchy theme (default role: accent)
+  kbd-color sync                                re-apply the saved state (theme mode reads the theme again)
+  kbd-color brightness <0-4|+|->                change brightness, keep the colour
+  kbd-color off | on                            backlight off / back to the saved state
+  kbd-color status                              JSON: state, resolved colour, device, palette
+
+Writes happen in the background; add --wait to block until the keyboard has them.
+"""
+
+import fcntl
+import glob
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+import tomllib
+
+SUPPORTED = {("3151", "4003"), ("3151", "4002"), ("3151", "5002")}
+REPORT_LEN = 64
+
+STATE_DIR = os.path.join(os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")), "kbd-color")
+STATE_FILE = os.path.join(STATE_DIR, "state.json")
+LOCK_FILE = os.path.join(STATE_DIR, "send.lock")
+SENT_FILE = os.path.join(STATE_DIR, "sent")
+THEME_COLORS = os.path.expanduser("~/.local/state/omarchy/current/theme/colors.toml")
+
+DEFAULT_STATE = {"mode": "theme", "role": "accent", "color": "#ffffff", "brightness": 4, "on": True}
+
+# Static mode: mode 1 with the "fixed colour" flag. Which nibble means fixed
+# varies per board: 0x08 on the Akko 3151:4003 (0x07 is rainbow there, as
+# on the 3098B); override with KBD_COLOR_FLAGS.
+STATIC_MODE = 1
+STATIC_FLAGS = int(os.environ.get("KBD_COLOR_FLAGS", "0x08"), 0)
+WIRE_SPEED = 5  # yc500 inverts speed: host 0 -> wire 5
+OFF_MODE = 0
+# Lighting lives in flash; sharkfin keeps LED writes at least 1 s apart.
+WRITE_GAP = 1.0
+
+
+def ioc(direction, nr, size):
+    return (direction << 30) | (size << 16) | (ord("H") << 8) | nr
+
+
+HIDIOCSFEATURE = ioc(3, 0x06, REPORT_LEN + 1)
+
+
+def has_vendor_collection(descriptor):
+    # Walk the HID items and look for Usage Page 0xFFFF (global item 0x06).
+    i = 0
+    while i < len(descriptor):
+        prefix = descriptor[i]
+        if prefix == 0xFE:  # long item
+            i += 3 + descriptor[i + 1]
+            continue
+        size = (0, 1, 2, 4)[prefix & 0x03]
+        if prefix == 0x06 and descriptor[i + 1:i + 3] == b"\xff\xff":
+            return True
+        i += 1 + size
+    return False
+
+
+def find_device():
+    for node in sorted(glob.glob("/sys/class/hidraw/hidraw*")):
+        try:
+            with open(os.path.join(node, "device/uevent")) as f:
+                uevent = dict(line.strip().split("=", 1) for line in f if "=" in line)
+            _, vid, pid = uevent.get("HID_ID", "0:0:0").split(":")
+            if (vid[-4:].lower(), pid[-4:].lower()) not in SUPPORTED:
+                continue
+            with open(os.path.join(node, "device/report_descriptor"), "rb") as f:
+                if has_vendor_collection(f.read()):
+                    return "/dev/" + os.path.basename(node), uevent.get("HID_NAME", "")
+        except OSError:
+            continue
+    return None, None
+
+
+def frame(op, mode, speed, brightness, flags, r, g, b):
+    data = [op, mode, speed, brightness, flags, r, g, b]
+    data.append((0xFF - (sum(data) & 0xFF)) & 0xFF)
+    return data
+
+
+def send(path, data):
+    buf = bytearray(REPORT_LEN + 1)
+    buf[1:1 + len(data)] = bytes(data)
+    fd = os.open(path, os.O_RDWR)
+    try:
+        try:
+            fcntl.ioctl(fd, HIDIOCSFEATURE, buf)
+        except (TimeoutError, BrokenPipeError):
+            die("the keyboard stopped answering; unplug it, wait ten seconds and plug it back in")
+    finally:
+        os.close(fd)
+
+
+def load_state():
+    state = dict(DEFAULT_STATE)
+    try:
+        with open(STATE_FILE) as f:
+            state.update(json.load(f))
+    except (OSError, ValueError):
+        pass
+    return state
+
+
+def save_state(state):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=STATE_DIR, prefix=".state-")
+    with os.fdopen(fd, "w") as f:
+        json.dump(state, f)
+    os.replace(tmp, STATE_FILE)
+
+
+def theme_palette():
+    try:
+        with open(THEME_COLORS, "rb") as f:
+            data = tomllib.load(f)
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+    return {k: v for k, v in data.items() if isinstance(v, str) and v.startswith("#") and len(v) == 7}
+
+
+def parse_hex(value):
+    value = value.strip().lstrip("#")
+    if len(value) != 6:
+        raise ValueError
+    return "#" + format(int(value, 16), "06x")
+
+
+def resolve_color(state):
+    if state["mode"] == "theme":
+        palette = theme_palette()
+        return palette.get(state["role"]) or palette.get("accent") or state["color"]
+    return state["color"]
+
+
+def lighting_frame(state):
+    if not state["on"]:
+        return frame(0x07, OFF_MODE, 0, 0, STATIC_FLAGS, 0, 0, 0)
+    color = resolve_color(state)
+    rgb = [int(color[i:i + 2], 16) for i in (1, 3, 5)]
+    # The board renders anything darker than 0x08 as unlit and needs pure
+    # white sent as 0xFAFAFA.
+    if max(rgb) < 8:
+        rgb = [8, 8, 8]
+    if rgb == [255, 255, 255]:
+        rgb = [0xFA, 0xFA, 0xFA]
+    return frame(0x07, STATIC_MODE, WIRE_SPEED, state["brightness"], STATIC_FLAGS, *rgb)
+
+
+def push(path, force):
+    # Writers queue on a lock, wait out the write gap, then send whatever the
+    # state is once it is their turn. A burst of changes (scrolling
+    # brightness) collapses into at most two writes.
+    with open(LOCK_FILE, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            time.sleep(max(0, os.path.getmtime(SENT_FILE) + WRITE_GAP - time.time()))
+        except OSError:
+            pass
+        data = bytes(lighting_frame(load_state()))
+        try:
+            with open(SENT_FILE, "rb") as f:
+                if not force and f.read() == data:
+                    return
+        except OSError:
+            pass
+        send(path, data)
+        with open(SENT_FILE, "wb") as f:
+            f.write(data)
+
+
+def apply(state, force=False, wait=False):
+    path, _ = find_device()
+    if not path:
+        die("no supported keyboard found (VID 3151 with a vendor collection)")
+    if not os.access(path, os.W_OK):
+        die(f"no permission on {path}; install the udev rule (see install.sh)")
+    save_state(state)
+    if wait:
+        subprocess.run(["omarchy-shell", "-q", "kbd-color", "refresh"], timeout=3)
+        push(path, force)
+        return
+    # Hand the paced write to a detached child so callers (the bar) return at once.
+    sys.stdout.flush()
+    if os.fork() == 0:
+        os.setsid()
+        devnull = os.open(os.devnull, os.O_RDWR)
+        for fd in (0, 1, 2):
+            os.dup2(devnull, fd)
+        try:
+            # Tell the bar to re-read the state (no-op when the shell is not running).
+            subprocess.run(["omarchy-shell", "-q", "kbd-color", "refresh"], timeout=3)
+            push(path, force)
+        finally:
+            os._exit(0)
+
+
+def die(message):
+    print(f"kbd-color: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def take_brightness(args, state):
+    if "-b" in args:
+        i = args.index("-b")
+        state["brightness"] = clamp(int(args[i + 1]))
+        del args[i:i + 2]
+
+
+def clamp(n):
+    return max(0, min(4, n))
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__.strip())
+        return
+    wait = "--wait" in argv
+    argv = [a for a in argv if a != "--wait"]
+    cmd, args = argv[0], argv[1:]
+    state = load_state()
+
+    if cmd == "status":
+        path, name = find_device()
+        print(json.dumps({
+            **state,
+            "resolved": resolve_color(state),
+            "device": path,
+            "deviceName": name,
+            "writable": bool(path) and os.access(path, os.W_OK),
+            "palette": theme_palette(),
+        }))
+        return
+
+    if cmd == "set":
+        take_brightness(args, state)
+        if not args:
+            die("set needs a colour")
+        palette = theme_palette()
+        if args[0] in palette:
+            state.update(mode="theme", role=args[0])
+        else:
+            try:
+                state.update(mode="custom", color=parse_hex(args[0]))
+            except ValueError:
+                die(f"not a colour or theme role: {args[0]}")
+        state["on"] = True
+    elif cmd == "theme":
+        take_brightness(args, state)
+        state.update(mode="theme", role=args[0] if args else state["role"], on=True)
+    elif cmd == "brightness":
+        if not args:
+            die("brightness needs 0-4, + or -")
+        step = {"+": 1, "-": -1}.get(args[0])
+        state["brightness"] = clamp(state["brightness"] + step if step else int(args[0]))
+        state["on"] = state["brightness"] > 0 or state["on"]
+    elif cmd == "off":
+        state["on"] = False
+    elif cmd == "on":
+        state["on"] = True
+    elif cmd == "toggle":
+        state["on"] = not state["on"]
+    elif cmd != "sync":
+        die(f"unknown command: {cmd}")
+
+    print(resolve_color(state) if state["on"] else "off")
+    apply(state, force=cmd == "sync", wait=wait)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
