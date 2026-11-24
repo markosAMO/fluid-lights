@@ -14,12 +14,12 @@ Do not send these frames to the keyboard collection: the board stalls its
 control endpoint and ignores every report until it is unplugged.
 
 Usage:
-  kbd-color set <#rrggbb|theme-role> [-b 0-4]   fixed colour (stops following the theme)
-  kbd-color theme [role] [-b 0-4]               follow the Omarchy theme (default role: accent)
-  kbd-color sync                                re-apply the saved state (theme mode reads the theme again)
-  kbd-color brightness <0-4|+|->                change brightness, keep the colour
-  kbd-color off | on                            backlight off / back to the saved state
-  kbd-color status                              JSON: state, resolved colour, device, palette
+  fluid-lights set <#rrggbb|theme-role> [-b 0-4]   fixed colour (stops following the theme)
+  fluid-lights theme [role] [-b 0-4]               follow the Omarchy theme (default role: accent)
+  fluid-lights sync                                re-apply the saved state (theme mode reads the theme again)
+  fluid-lights brightness <0-4|+|->                change brightness, keep the colour
+  fluid-lights off | on                            backlight off / back to the saved state
+  fluid-lights status                              JSON: state, resolved colour, device, palette
 
 Writes happen in the background; add --wait to block until the keyboard has them.
 """
@@ -37,7 +37,7 @@ import tomllib
 SUPPORTED = {("3151", "4003"), ("3151", "4002"), ("3151", "5002")}
 REPORT_LEN = 64
 
-STATE_DIR = os.path.join(os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")), "kbd-color")
+STATE_DIR = os.path.join(os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")), "fluid-lights")
 STATE_FILE = os.path.join(STATE_DIR, "state.json")
 LOCK_FILE = os.path.join(STATE_DIR, "send.lock")
 SENT_FILE = os.path.join(STATE_DIR, "sent")
@@ -198,7 +198,7 @@ def apply(state, force=False, wait=False):
         die(f"no permission on {path}; install the udev rule (see install.sh)")
     save_state(state)
     if wait:
-        subprocess.run(["omarchy-shell", "-q", "kbd-color", "refresh"], timeout=3)
+        subprocess.run(["omarchy-shell", "-q", "fluid-lights", "refresh"], timeout=3)
         push(path, force)
         return
     # Hand the paced write to a detached child so callers (the bar) return at once.
@@ -210,14 +210,14 @@ def apply(state, force=False, wait=False):
             os.dup2(devnull, fd)
         try:
             # Tell the bar to re-read the state (no-op when the shell is not running).
-            subprocess.run(["omarchy-shell", "-q", "kbd-color", "refresh"], timeout=3)
+            subprocess.run(["omarchy-shell", "-q", "fluid-lights", "refresh"], timeout=3)
             push(path, force)
         finally:
             os._exit(0)
 
 
 def die(message):
-    print(f"kbd-color: {message}", file=sys.stderr)
+    print(f"fluid-lights: {message}", file=sys.stderr)
     sys.exit(1)
 
 

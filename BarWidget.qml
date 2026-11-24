@@ -8,7 +8,7 @@ import qs.Ui
 // brightness.
 BarWidget {
   id: root
-  moduleName: "io.github.markosamo.keyboard-color"
+  moduleName: "io.github.markosamo.fluid-lights"
 
   readonly property var kbd: bar && bar.shell ? bar.shell.serviceFor(moduleName) : null
   readonly property bool available: kbd ? kbd.available : false

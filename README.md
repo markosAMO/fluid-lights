@@ -1,4 +1,4 @@
-# Keyboard Color
+# Fluid Lights
 
 Omarchy shell plugin that controls the backlight of Akko / RongYuan
 keyboards (USB vendor `3151`) from the top bar, and keeps it in sync with
@@ -19,29 +19,29 @@ Tested on the Akko "Multi-modes Keyboard-B" (`3151:4003`). `3151:4002` and
 ## Install
 
 ```bash
-git clone https://github.com/markosAMO/keyboard-color.git
-cd keyboard-color
+git clone https://github.com/markosAMO/fluid-lights.git
+cd fluid-lights
 ./install.sh
 ```
 
 `install.sh` asks for sudo once to install
-`/etc/udev/rules.d/70-kbd-color.rules`, which gives the logged-in user
+`/etc/udev/rules.d/70-fluid-lights.rules`, which gives the logged-in user
 access to the keyboard's hidraw node. Everything else lives under your home.
 
 ## CLI
 
-The bar drives `kbd-color`, which you can also use directly:
+The bar drives `fluid-lights`, which you can also use directly:
 
 ```bash
-kbd-color theme            # follow the theme accent
-kbd-color theme magenta    # follow another theme role
-kbd-color set '#ff8800'    # fixed colour
-kbd-color brightness 2     # 0-4, or + / -
-kbd-color off | on | toggle
-kbd-color status           # JSON
+fluid-lights theme            # follow the theme accent
+fluid-lights theme magenta    # follow another theme role
+fluid-lights set '#ff8800'    # fixed colour
+fluid-lights brightness 2     # 0-4, or + / -
+fluid-lights off | on | toggle
+fluid-lights status           # JSON
 ```
 
-State is kept in `~/.local/state/kbd-color/state.json`.
+State is kept in `~/.local/state/fluid-lights/state.json`.
 
 ## Protocol
 
@@ -59,7 +59,7 @@ is rainbow. Other boards swap the nibble; override it with
 
 Do not send these frames to the keyboard collection (interface 0): the board
 stalls its USB control endpoint and ignores every report until it is
-unplugged. If `kbd-color` says the keyboard stopped answering, unplug it,
+unplugged. If `fluid-lights` says the keyboard stopped answering, unplug it,
 wait ten seconds and plug it back in.
 
 Protocol notes come from

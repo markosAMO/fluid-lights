@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "id": "io.github.markosamo.keyboard-color",
-  "name": "Keyboard Color",
+  "id": "io.github.markosamo.fluid-lights",
+  "name": "Fluid Lights",
   "version": "0.1.0",
   "author": "markosAMO",
   "license": "MIT",
@@ -15,7 +15,7 @@
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
-    "displayName": "Keyboard Color",
+    "displayName": "Fluid Lights",
     "description": "Keyboard backlight colour, synced with the Omarchy theme.",
     "category": "Hardware",
     "allowMultiple": false,

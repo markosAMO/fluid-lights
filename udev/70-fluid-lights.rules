@@ -1,4 +1,4 @@
-# kbd-color: let the logged-in user write lighting commands to Akko /
+# fluid-lights: let the logged-in user write lighting commands to Akko /
 # RongYuan keyboards (VID 3151) without root.
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3151", ATTRS{idProduct}=="4003", TAG+="uaccess"
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3151", ATTRS{idProduct}=="4002", TAG+="uaccess"

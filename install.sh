@@ -1,6 +1,6 @@
 #!/bin/bash
 # Installs the udev rule that lets your user drive the keyboard lighting
-# (needs sudo once), links the kbd-color command, copies the plugin into the
+# (needs sudo once), links the fluid-lights command, copies the plugin into the
 # shell's plugin folder, installs the theme-set hook and puts the widget on
 # the bar. Safe to run again.
 #
@@ -8,11 +8,11 @@
 
 set -euo pipefail
 
-PLUGIN_ID="io.github.markosamo.keyboard-color"
+PLUGIN_ID="io.github.markosamo.fluid-lights"
 PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALLED_DIR="$HOME/.config/omarchy/plugins/$PLUGIN_ID"
-UDEV_RULE="/etc/udev/rules.d/70-kbd-color.rules"
-BIN_LINK="$HOME/.local/bin/kbd-color"
+UDEV_RULE="/etc/udev/rules.d/70-fluid-lights.rules"
+BIN_LINK="$HOME/.local/bin/fluid-lights"
 FILES=(manifest.json Service.qml BarWidget.qml bin hooks udev install.sh uninstall.sh)
 
 ASSUME_YES=0
@@ -29,11 +29,11 @@ confirm() {
   fi
 }
 
-if ! cmp -s "$PLUGIN_DIR/udev/70-kbd-color.rules" "$UDEV_RULE"; then
+if ! cmp -s "$PLUGIN_DIR/udev/70-fluid-lights.rules" "$UDEV_RULE"; then
   echo "This installs $UDEV_RULE (with sudo) so your user can"
   echo "send lighting commands to the keyboard without root."
   confirm "Continue?" || { echo "Aborted; nothing was changed."; exit 1; }
-  sudo install -m 644 "$PLUGIN_DIR/udev/70-kbd-color.rules" "$UDEV_RULE"
+  sudo install -m 644 "$PLUGIN_DIR/udev/70-fluid-lights.rules" "$UDEV_RULE"
   sudo udevadm control --reload-rules
   sudo udevadm trigger --subsystem-match=hidraw --action=change
   sudo udevadm settle
@@ -48,10 +48,10 @@ if [[ $PLUGIN_DIR != "$INSTALLED_DIR" ]]; then
 fi
 
 mkdir -p "$(dirname "$BIN_LINK")"
-ln -sfn "$INSTALLED_DIR/bin/kbd-color" "$BIN_LINK"
+ln -sfn "$INSTALLED_DIR/bin/fluid-lights" "$BIN_LINK"
 
 # Re-colour the keyboard on every theme change, whichever app sets the theme.
-omarchy hook install theme-set "$INSTALLED_DIR/hooks/kbd-color.hook" >/dev/null
+omarchy hook install theme-set "$INSTALLED_DIR/hooks/fluid-lights.hook" >/dev/null
 
 omarchy-shell shell rescanPlugins >/dev/null
 # The rescan finishes in the background; wait until the shell knows the id.
@@ -65,4 +65,4 @@ omarchy bar put "$PLUGIN_ID" --section right --index 0 >/dev/null 2>&1 || true
 omarchy restart shell
 
 "$BIN_LINK" sync || true
-echo "Done: the keyboard icon is on the bar. Try 'kbd-color --help'."
+echo "Done: the keyboard icon is on the bar. Try 'fluid-lights --help'."

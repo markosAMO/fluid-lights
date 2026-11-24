@@ -1,15 +1,15 @@
 import QtQuick
 import Quickshell.Io
 
-// Owns the keyboard state for every bar slot. Runs bin/kbd-color and keeps the
+// Owns the keyboard state for every bar slot. Runs bin/fluid-lights and keeps the
 // last `status` JSON around for the widget. Theme changes are handled by the
-// theme-set hook (hooks/kbd-color.hook); every kbd-color run pings the
-// `kbd-color refresh` IPC so the bar catches up whoever made the change.
+// theme-set hook (hooks/fluid-lights.hook); every fluid-lights run pings the
+// `fluid-lights refresh` IPC so the bar catches up whoever made the change.
 Item {
   id: root
 
   readonly property string pluginDir: Qt.resolvedUrl(".").toString().replace("file://", "")
-  readonly property string cli: pluginDir + "bin/kbd-color"
+  readonly property string cli: pluginDir + "bin/fluid-lights"
 
   property var status: ({})
   property string lastError: ""
@@ -42,7 +42,7 @@ Item {
   Component.onCompleted: run(["sync"])
 
   IpcHandler {
-    target: "kbd-color"
+    target: "fluid-lights"
 
     function refresh(): void {
       root.refresh()
@@ -54,7 +54,7 @@ Item {
     stderr: StdioCollector {
       onStreamFinished: {
         root.lastError = text.trim()
-        if (root.lastError) console.warn("keyboard-color:", root.lastError)
+        if (root.lastError) console.warn("fluid-lights:", root.lastError)
       }
     }
     onExited: {

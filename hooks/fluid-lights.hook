@@ -1,5 +1,5 @@
 #!/bin/bash
-# theme-set hook from the keyboard-color plugin: re-colour the keyboard for
+# theme-set hook from the fluid-lights plugin: re-colour the keyboard for
 # the theme that was just set. Runs for every theme change (omarchy theme set,
 # the theme switcher, Aether). A fixed colour stays as it is.
-command -v kbd-color >/dev/null && kbd-color sync >/dev/null || true
+command -v fluid-lights >/dev/null && fluid-lights sync >/dev/null || true
